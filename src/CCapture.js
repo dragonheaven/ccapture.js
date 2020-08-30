@@ -1,4 +1,10 @@
-;(function() {
+(function() {
+
+if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') {
+  var Tar = require('./tar.js');
+  var download = require('./download.js');
+  var GIF = require('./gif.js');
+}
 
 "use strict";
 
@@ -164,17 +170,14 @@ CCFrameEncoder.prototype.step = function() { console.log( 'Step not set!' ) }
 
 function CCTarEncoder( settings ) {
 
-  CCFrameEncoder.call( this, settings );
+	CCFrameEncoder.call( this, settings );
 
-  this.extension = '.tar'
-  this.mimeType = 'application/x-tar'
-  this.fileExtension = '';
-  this.baseFilename = this.filename;
+	this.extension = '.tar'
+	this.mimeType = 'application/x-tar'
+	this.fileExtension = '';
 
-  this.tape = null
-  this.count = 0;
-  this.part = 1;
-  this.frames = 0;
+	this.tape = null
+	this.count = 0;
 
 }
 
@@ -182,49 +185,35 @@ CCTarEncoder.prototype = Object.create( CCFrameEncoder.prototype );
 
 CCTarEncoder.prototype.start = function(){
 
-  this.dispose();
+	this.dispose();
 
 };
 
 CCTarEncoder.prototype.add = function( blob ) {
 
-  var fileReader = new FileReader();
-  fileReader.onload = function() {
-    this.tape.append( pad( this.count ) + this.fileExtension, new Uint8Array( fileReader.result ) );
+	var fileReader = new FileReader();
+	fileReader.onload = function() {
+		this.tape.append( pad( this.count ) + this.fileExtension, new Uint8Array( fileReader.result ) );
 
-    if( this.settings.autoSaveTime > 0 && ( this.frames / this.settings.framerate ) >= this.settings.autoSaveTime ) {
-      this.save( function( blob ) {
-        this.filename = this.baseFilename + '-part-' + pad( this.part );
-        download( blob, this.filename + this.extension, this.mimeType );
-        var count = this.count;
-        this.dispose();
-        this.count = count+1;
-        this.part++;
-        this.filename = this.baseFilename + '-part-' + pad( this.part );
-        this.frames = 0;
-        this.step();
-      }.bind( this ) )
-    } else {
-      this.count++;
-      this.frames++;
-      this.step();
-    }
+		//if( this.settings.autoSaveTime > 0 && ( this.frames.length / this.settings.framerate ) >= this.settings.autoSaveTime ) {
 
-  }.bind( this );
-  fileReader.readAsArrayBuffer(blob);
+		this.count++;
+		this.step();
+	}.bind( this );
+	fileReader.readAsArrayBuffer(blob);
 
 }
 
 CCTarEncoder.prototype.save = function( callback ) {
 
-  callback( this.tape.save() );
+	callback( this.tape.save() );
 
 }
 
 CCTarEncoder.prototype.dispose = function() {
 
-  this.tape = new Tar();
-  this.count = 0;
+	this.tape = new Tar();
+	this.count = 0;
 
 }
 
@@ -287,17 +276,17 @@ function CCWebMEncoder( settings ) {
 	this.extension = '.webm'
 	this.mimeType = 'video/webm'
 	this.baseFilename = this.filename;
-  this.framerate = settings.framerate;
 
-	this.frames = 0;
+	this.frames = [];
 	this.part = 1;
 
   this.videoWriter = new WebMWriter({
     quality: this.quality,
     fileWriter: null,
     fd: null,
-    frameRate: this.framerate
-  });
+    frameRate: settings.framerate
+});
+
 
 }
 
@@ -313,7 +302,9 @@ CCWebMEncoder.prototype.add = function( canvas ) {
 
   this.videoWriter.addFrame(canvas);
 
-	if( this.settings.autoSaveTime > 0 && ( this.frames / this.settings.framerate ) >= this.settings.autoSaveTime ) {
+	//this.frames.push( canvas.toDataURL('image/webp', this.quality) );
+
+	if( this.settings.autoSaveTime > 0 && ( this.frames.length / this.settings.framerate ) >= this.settings.autoSaveTime ) {
 		this.save( function( blob ) {
 			this.filename = this.baseFilename + '-part-' + pad( this.part );
 			download( blob, this.filename + this.extension, this.mimeType );
@@ -323,7 +314,6 @@ CCWebMEncoder.prototype.add = function( canvas ) {
 			this.step();
 		}.bind( this ) )
 	} else {
-    this.frames++;
 		this.step();
 	}
 
@@ -331,19 +321,19 @@ CCWebMEncoder.prototype.add = function( canvas ) {
 
 CCWebMEncoder.prototype.save = function( callback ) {
 
+//	if( !this.frames.length ) return;
+
   this.videoWriter.complete().then(callback);
+
+	/*var webm = Whammy.fromImageArray( this.frames, this.settings.framerate )
+	var blob = new Blob( [ webm ], { type: "octet/stream" } );
+	callback( blob );*/
 
 }
 
 CCWebMEncoder.prototype.dispose = function( canvas ) {
 
-	this.frames = 0;
-  this.videoWriter = new WebMWriter({
-    quality: this.quality,
-    fileWriter: null,
-    fd: null,
-    frameRate: this.framerate
-  });
+	this.frames = [];
 
 }
 
@@ -447,68 +437,6 @@ CCStreamEncoder.prototype.save = function( callback ) {
 	this.mediaRecorder.stop();
 
 }
-
-/*function CCGIFEncoder( settings ) {
-
-	CCFrameEncoder.call( this );
-
-	settings.quality = settings.quality || 6;
-	this.settings = settings;
-
-	this.encoder = new GIFEncoder();
-	this.encoder.setRepeat( 1 );
-  	this.encoder.setDelay( settings.step );
-  	this.encoder.setQuality( 6 );
-  	this.encoder.setTransparent( null );
-  	this.encoder.setSize( 150, 150 );
-
-  	this.canvas = document.createElement( 'canvas' );
-  	this.ctx = this.canvas.getContext( '2d' );
-
-}
-
-CCGIFEncoder.prototype = Object.create( CCFrameEncoder );
-
-CCGIFEncoder.prototype.start = function() {
-
-	this.encoder.start();
-
-}
-
-CCGIFEncoder.prototype.add = function( canvas ) {
-
-	this.canvas.width = canvas.width;
-	this.canvas.height = canvas.height;
-	this.ctx.drawImage( canvas, 0, 0 );
-	this.encoder.addFrame( this.ctx );
-
-	this.encoder.setSize( canvas.width, canvas.height );
-	var readBuffer = new Uint8Array(canvas.width * canvas.height * 4);
-	var context = canvas.getContext( 'webgl' );
-	context.readPixels(0, 0, canvas.width, canvas.height, context.RGBA, context.UNSIGNED_BYTE, readBuffer);
-	this.encoder.addFrame( readBuffer, true );
-
-}
-
-CCGIFEncoder.prototype.stop = function() {
-
-	this.encoder.finish();
-
-}
-
-CCGIFEncoder.prototype.save = function( callback ) {
-
-	var binary_gif = this.encoder.stream().getData();
-
-	var data_url = 'data:image/gif;base64,'+encode64(binary_gif);
-	window.location = data_url;
-	return;
-
-	var blob = new Blob( [ binary_gif ], { type: "octet/stream" } );
-	var url = window.URL.createObjectURL( blob );
-	callback( url );
-
-}*/
 
 function CCGIFEncoder( settings ) {
 
@@ -669,7 +597,7 @@ function CCapture( settings ) {
 
 	var _oldSetTimeout = window.setTimeout,
 		_oldSetInterval = window.setInterval,
-	    	_oldClearInterval = window.clearInterval,
+		_oldClearInterval = window.clearInterval,
 		_oldClearTimeout = window.clearTimeout,
 		_oldRequestAnimationFrame = window.requestAnimationFrame,
 		_oldNow = window.Date.now,
@@ -735,7 +663,7 @@ function CCapture( settings ) {
 			return _performanceTime;
 		};
 
-		function hookCurrentTime() { 
+		function hookCurrentTime() {
 			if( !this._hooked ) {
 				this._hooked = true;
 				this._hookedTime = this.currentTime || 0;
@@ -790,6 +718,8 @@ function CCapture( settings ) {
 	function _updateTime() {
 		var seconds = _frameCount / _settings.framerate;
 		if( ( _settings.frameLimit && _frameCount >= _settings.frameLimit ) || ( _settings.timeLimit && seconds >= _settings.timeLimit ) ) {
+			console.log('_updateTime', '\nframeLimit: ', _settings.frameLimit, '\nframeCount: ', _frameCount,
+				'\ntimeLimit: ', _settings.timeLimit, '\nseconds: ', seconds,)
 			_stop();
 			_save();
 		}
@@ -932,35 +862,35 @@ function CCapture( settings ) {
 		if( _verbose ) console.log( message );
 	}
 
-    function _on( event, handler ) {
+	function _on( event, handler ) {
 
-        _handlers[event] = handler;
+			_handlers[event] = handler;
 
-    }
+	}
 
-    function _emit( event ) {
+	function _emit( event ) {
 
-        var handler = _handlers[event];
-        if ( handler ) {
+			var handler = _handlers[event];
+			if ( handler ) {
 
-            handler.apply( null, Array.prototype.slice.call( arguments, 1 ) );
+					handler.apply( null, Array.prototype.slice.call( arguments, 1 ) );
 
-        }
+			}
 
-    }
+	}
 
-    function _progress( progress ) {
+	function _progress( progress ) {
 
-        _emit( 'progress', progress );
+			_emit( 'progress', progress );
 
-    }
+	}
 
 	return {
 		start: _start,
 		capture: _capture,
 		stop: _stop,
 		save: _save,
-        on: _on
+			on: _on
 	}
 }
 
